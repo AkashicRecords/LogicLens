@@ -1,0 +1,3 @@
+[console_scripts]
+logiclens = backend.app.cli:main
+

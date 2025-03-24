@@ -1,144 +1,277 @@
 from flask import Blueprint, jsonify, request
-from ..utils.dummy_data import DummyDataGenerator
+from datetime import datetime
+import os
+
 from ..services.ollama_service import OllamaService
+from ..utils.logger import get_logger
+from ..utils.test_utils import get_test_manager
+from ..utils.monitoring import get_monitoring_manager
 
 ai_bp = Blueprint('ai', __name__)
-dummy_data = DummyDataGenerator()
+
+# Initialize services
 ollama_service = OllamaService()
+logger = get_logger()
+test_manager = get_test_manager()
+monitoring_manager = get_monitoring_manager()
 
-@ai_bp.route('/api/ai/analysis', methods=['GET'])
-def get_analysis():
-    """Get comprehensive AI analysis of the codebase"""
-    try:
-        return jsonify(dummy_data.generate_analysis_data())
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+@ai_bp.route('/health', methods=['GET'])
+def health_check():
+    """API health check endpoint"""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": "0.1.0"
+    })
 
-@ai_bp.route('/api/ai/chat', methods=['POST'])
-def chat():
-    """Handle chat interactions with AI"""
+@ai_bp.route('/logs', methods=['GET'])
+def get_logs():
+    """Get recent logs"""
+    component = request.args.get('component')
+    level = request.args.get('level')
+    limit = int(request.args.get('limit', 100))
+    
+    logs = logger.get_logs(
+        filter_component=component,
+        filter_level=level,
+        limit=limit
+    )
+    
+    return jsonify({
+        "logs": logs,
+        "total": len(logs)
+    })
+
+@ai_bp.route('/logs', methods=['POST'])
+def add_log():
+    """Add a new log entry"""
+    data = request.json
+    
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+        
+    required_fields = ['component', 'message']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"error": f"Missing required field: {field}"}), 400
+    
+    log_entry = logger.log_event(
+        component=data['component'],
+        message=data['message'],
+        level=data.get('level', 'INFO'),
+        details=data.get('details')
+    )
+    
+    return jsonify(log_entry)
+
+@ai_bp.route('/logs/import', methods=['POST'])
+def import_logs():
+    """Import logs from external file"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+        
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({"error": "Empty filename"}), 400
+        
+    # Save file temporarily
+    temp_path = f"/tmp/logiclens_import_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    file.save(temp_path)
+    
+    format_type = request.form.get('format', 'json')
+    logs = logger.read_external_logs(temp_path, format_type)
+    
+    # Clean up
+    os.remove(temp_path)
+    
+    return jsonify({
+        "imported": len(logs),
+        "logs": logs[:10]  # Return first 10 logs as preview
+    })
+
+@ai_bp.route('/tests/suites', methods=['GET'])
+def get_test_suites():
+    """Get all test suites"""
+    suites = test_manager.get_all_suites()
+    return jsonify({
+        "suites": suites,
+        "total": len(suites)
+    })
+
+@ai_bp.route('/tests/suites', methods=['POST'])
+def create_test_suite():
+    """Create a new test suite"""
+    data = request.json
+    
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+        
+    suite_id = test_manager.start_suite(
+        suite_id=data.get('id'),
+        name=data.get('name', 'New Test Suite')
+    )
+    
+    return jsonify({
+        "suite_id": suite_id,
+        "suite": test_manager.get_suite(suite_id)
+    })
+
+@ai_bp.route('/tests/suites/<suite_id>', methods=['GET'])
+def get_test_suite(suite_id):
+    """Get a specific test suite"""
+    suite = test_manager.get_suite(suite_id)
+    
+    if not suite:
+        return jsonify({"error": f"Test suite not found: {suite_id}"}), 404
+        
+    return jsonify(suite)
+
+@ai_bp.route('/tests/suites/<suite_id>/results', methods=['POST'])
+def add_test_result(suite_id):
+    """Add a test result to a suite"""
+    data = request.json
+    
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+        
+    required_fields = ['test_id', 'name', 'status']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"error": f"Missing required field: {field}"}), 400
+            
     try:
-        data = request.json
-        message = data.get('message')
-        context = data.get('context', {})
+        result = test_manager.add_test_result(
+            suite_id=suite_id,
+            test_id=data['test_id'],
+            test_name=data['name'],
+            status=data['status'],
+            duration=data.get('duration', 0.0),
+            message=data.get('message'),
+            metadata=data.get('metadata')
+        )
         
-        if not message:
-            return jsonify({'error': 'No message provided'}), 400
-            
-        # Get relevant context based on the message
-        context_data = {}
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+
+@ai_bp.route('/tests/suites/<suite_id>/end', methods=['POST'])
+def end_test_suite(suite_id):
+    """End a test suite"""
+    data = request.json or {}
+    
+    try:
+        suite = test_manager.end_suite(
+            suite_id=suite_id,
+            status=data.get('status')
+        )
         
-        # Check if the message is about logs
-        if any(keyword in message.lower() for keyword in ['log', 'logs', 'logging']):
-            context_data['logs'] = dummy_data.generate_recent_logs()
-            
-        # Check if the message is about tests
-        if any(keyword in message.lower() for keyword in ['test', 'tests', 'testing', 'coverage']):
-            context_data['test_results'] = dummy_data.generate_test_summary()
-            
-        # Generate a contextual response
-        response = generate_chat_response(message, context_data)
+        return jsonify(suite)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+
+@ai_bp.route('/tests/import/junit', methods=['POST'])
+def import_junit():
+    """Import test results from JUnit XML"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+        
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({"error": "Empty filename"}), 400
+        
+    # Save file temporarily
+    temp_path = f"/tmp/logiclens_junit_{datetime.now().strftime('%Y%m%d%H%M%S')}.xml"
+    file.save(temp_path)
+    
+    try:
+        suite_name = request.form.get('name')
+        suite_id = test_manager.import_junit_xml(temp_path, suite_name)
+        suite = test_manager.get_suite(suite_id)
+        
+        # Clean up
+        os.remove(temp_path)
         
         return jsonify({
-            'response': response,
-            'context': context_data
+            "suite_id": suite_id,
+            "suite": suite
         })
-        
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-def generate_chat_response(message, context):
-    """Generate a contextual response based on the message and available data"""
-    message_lower = message.lower()
-    
-    if any(keyword in message_lower for keyword in ['log', 'logs', 'logging']):
-        logs = context.get('logs', [])
-        if logs:
-            recent_logs = logs[:3]
-            return f"Here are the 3 most recent logs:\n" + "\n".join(
-                f"- [{log['timestamp']}] {log['level']}: {log['message']}"
-                for log in recent_logs
-            )
-        return "No recent logs available."
+        # Clean up on error
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
         
-    elif any(keyword in message_lower for keyword in ['test', 'tests', 'testing', 'coverage']):
-        test_results = context.get('test_results', {})
-        if test_results:
-            return f"Test Summary:\n" + \
-                   f"- Total Tests: {test_results['total_tests']}\n" + \
-                   f"- Passed: {test_results['passed_tests']}\n" + \
-                   f"- Failed: {test_results['failed_tests']}\n" + \
-                   f"- Coverage: {test_results['coverage']*100}%\n" + \
-                   f"- Last Run: {test_results['last_run']}"
-        return "No test results available."
+        return jsonify({"error": str(e)}), 500
+
+@ai_bp.route('/monitoring/metrics', methods=['GET'])
+def get_metrics():
+    """Get current system metrics"""
+    # Collect fresh metrics
+    metrics = monitoring_manager.collect_metrics()
+    return jsonify(metrics)
+
+@ai_bp.route('/monitoring/history', methods=['GET'])
+def get_metrics_history():
+    """Get metrics history"""
+    count = int(request.args.get('count', 60))
+    history = monitoring_manager.get_metrics_history(count)
+    
+    return jsonify({
+        "metrics": history,
+        "count": len(history)
+    })
+
+@ai_bp.route('/monitoring/system', methods=['GET'])
+def get_system_info():
+    """Get basic system information"""
+    return jsonify(monitoring_manager.get_system_info())
+
+@ai_bp.route('/monitoring/trends', methods=['GET'])
+def analyze_metric_trend():
+    """Analyze trends for a specific metric"""
+    metric = request.args.get('metric')
+    if not metric:
+        return jsonify({"error": "No metric specified"}), 400
         
-    elif any(keyword in message_lower for keyword in ['security', 'vulnerability']):
-        return "Security Analysis:\n" + \
-               "- Recent security scan completed\n" + \
-               "- 3 potential vulnerabilities detected\n" + \
-               "- Recommendations available in the dashboard"
-               
-    elif any(keyword in message_lower for keyword in ['performance', 'speed']):
-        return "Performance Analysis:\n" + \
-               "- Database queries optimization needed\n" + \
-               "- Memory usage within acceptable range\n" + \
-               "- API response times stable"
-               
-    else:
-        return "I can help you with:\n" + \
-               "- Log analysis\n" + \
-               "- Test results\n" + \
-               "- Security analysis\n" + \
-               "- Performance metrics\n" + \
-               "What would you like to know more about?"
-
-@ai_bp.route('/analyze-logs', methods=['POST'])
-def analyze_logs():
-    """
-    Analyze logs using OLLAMA
-    """
-    data = request.get_json()
-    if not data or 'logs' not in data:
-        return jsonify({"error": "No logs provided"}), 400
+    window = int(request.args.get('window', 60))
+    analysis = monitoring_manager.analyze_trends(metric, window)
     
-    result = ollama_service.analyze_logs(data['logs'])
-    return jsonify(result)
+    return jsonify(analysis)
 
-@ai_bp.route('/analyze-tests', methods=['POST'])
-def analyze_tests():
+@ai_bp.route('/analyze', methods=['POST'])
+def analyze():
     """
-    Analyze test results using OLLAMA
+    Analyze data using OLLAMA
     """
-    data = request.get_json()
-    if not data or 'test_results' not in data:
-        return jsonify({"error": "No test results provided"}), 400
+    data = request.json
     
-    result = ollama_service.analyze_tests(data['test_results'])
-    return jsonify(result)
-
-@ai_bp.route('/analyze-security', methods=['POST'])
-def analyze_security():
-    """
-    Analyze security data using OLLAMA
-    """
-    data = request.get_json()
-    if not data or 'security_data' not in data:
-        return jsonify({"error": "No security data provided"}), 400
-    
-    result = ollama_service.analyze_security(data['security_data'])
-    return jsonify(result)
-
-@ai_bp.route('/generate', methods=['POST'])
-def generate():
-    """
-    Generate a response using OLLAMA
-    """
-    data = request.get_json()
     if not data or 'prompt' not in data:
         return jsonify({"error": "No prompt provided"}), 400
     
+    # Log the analysis request
+    logger.log_event(
+        component="ai_analysis",
+        message=f"Analysis requested: {data['prompt'][:50]}...",
+        level="INFO"
+    )
+    
+    # Generate the response
     result = ollama_service.generate_response(
         data['prompt'],
         data.get('context')
     )
+    
+    # Log the result (success or failure)
+    if 'error' in result:
+        logger.log_event(
+            component="ai_analysis",
+            message=f"Analysis failed: {result['error']}",
+            level="ERROR"
+        )
+    else:
+        logger.log_event(
+            component="ai_analysis",
+            message="Analysis completed successfully",
+            level="INFO"
+        )
+    
     return jsonify(result) 

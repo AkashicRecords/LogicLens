@@ -14,12 +14,13 @@ const AIAnalysis = () => {
     setError(null);
 
     try {
-      const response = await axios.post('http://localhost:5000/api/ai/generate', {
+      const response = await axios.post('http://localhost:5000/api/analyze', {
         prompt: input
       });
       setResult(response.data);
     } catch (err) {
       setError(err.response?.data?.error || 'An error occurred');
+      console.error('AI Analysis error:', err);
     } finally {
       setLoading(false);
     }
@@ -45,7 +46,13 @@ const AIAnalysis = () => {
       {result && (
         <div className="result">
           <h3>Analysis Result:</h3>
-          <pre>{JSON.stringify(result, null, 2)}</pre>
+          <div className="response-content">
+            {result.response ? (
+              <pre>{result.response}</pre>
+            ) : (
+              <pre>{JSON.stringify(result, null, 2)}</pre>
+            )}
+          </div>
         </div>
       )}
     </div>

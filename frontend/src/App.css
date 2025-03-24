@@ -1,18 +1,99 @@
 .App {
   text-align: center;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .App-header {
   background-color: #282c34;
-  min-height: 20vh;
+  padding: 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
   color: white;
 }
 
-main {
+.App-header h1 {
+  margin: 0;
+  font-size: 2.2rem;
+}
+
+.App-nav {
+  background-color: #f8f9fa;
+  display: flex;
+  justify-content: center;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.App-nav button {
+  background: none;
+  border: none;
+  padding: 15px 25px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #6c757d;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.App-nav button:hover {
+  color: #007bff;
+}
+
+.App-nav button.active {
+  color: #007bff;
+  font-weight: 600;
+}
+
+.App-nav button.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background-color: #007bff;
+}
+
+.App-content {
+  flex: 1;
   padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.App-footer {
+  background-color: #f8f9fa;
+  padding: 15px;
+  border-top: 1px solid #dee2e6;
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .App-nav {
+    flex-wrap: wrap;
+  }
+  
+  .App-nav button {
+    flex: 1 0 40%;
+    padding: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .App-header h1 {
+    font-size: 1.8rem;
+  }
+  
+  .App-nav button {
+    flex: 1 0 100%;
+    padding: 8px;
+  }
 } 

@@ -1,0 +1,8 @@
+README.md
+setup.py
+logiclens.egg-info/PKG-INFO
+logiclens.egg-info/SOURCES.txt
+logiclens.egg-info/dependency_links.txt
+logiclens.egg-info/entry_points.txt
+logiclens.egg-info/requires.txt
+logiclens.egg-info/top_level.txt
