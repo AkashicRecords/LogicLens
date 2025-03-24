@@ -273,41 +273,131 @@ ai-logger/
             └── AIDashboard/
 ```
 
-## Troubleshooting
+## 🔧 Troubleshooting Guide
 
-### OLLAMA Issues
-1. If OLLAMA fails to start:
+### Backend Issues
+
+#### Flask Server Won't Start
+1. **Virtual Environment Issues**
    ```bash
-   # Check OLLAMA service
-   systemctl status ollama
+   # Recreate virtual environment
+   rm -rf venv
+   python -m venv venv
+   source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+2. **Port Already in Use**
+   ```bash
+   # Check what's using port 5000
+   lsof -i :5000    # On Unix/Mac
+   netstat -ano | findstr :5000  # On Windows
+   ```
+
+3. **Module Not Found Errors**
+   ```bash
+   # Verify all dependencies are installed
+   pip install -r requirements.txt
    
-   # Restart OLLAMA
-   systemctl restart ollama
+   # If python-ollama fails, try:
+   pip install python-ollama==0.2.4
    ```
 
-2. For GPU issues:
+### Frontend Issues
+
+#### `npm start` Fails
+1. **Node Modules Issues**
    ```bash
-   # Check CUDA installation
-   nvidia-smi
+   # Clean install
+   rm -rf node_modules
+   rm package-lock.json
+   npm install
+   ```
+
+2. **Port 3000 in Use**
+   ```bash
+   # Kill process using port 3000
+   lsof -i :3000    # On Unix/Mac
+   netstat -ano | findstr :3000  # On Windows
+   ```
+
+### OLLAMA Connection Issues
+
+1. **Verify OLLAMA is Running**
+   ```bash
+   # Check OLLAMA status
+   curl http://localhost:11434/api/version
+   ```
+
+2. **Common Error Messages and Solutions**:
+   - "Connection refused": OLLAMA service not running
+   - "Model not found": Need to pull the model first
+   - "An error occurred": Check backend logs for details
+
+### CORS Issues
+
+1. **403 Forbidden Errors**
+   - Check browser console for specific CORS errors
+   - Verify frontend URL matches CORS configuration
+   - Ensure all required headers are allowed
+
+2. **API Connection Failed**
+   - Confirm backend URL is correct in frontend config
+   - Check if backend server is running
+   - Verify network connectivity
+
+### Environment Setup
+
+1. **Environment Variables**
+   ```bash
+   # Backend (.env file)
+   FLASK_APP=app
+   FLASK_ENV=development
    
-   # Verify OLLAMA GPU usage
-   ollama run deepseek-coder:r1 "Hello" --gpu
+   # Frontend (.env file)
+   REACT_APP_API_URL=http://localhost:5000
    ```
 
-3. For memory issues:
+2. **File Permissions**
    ```bash
-   # Use CPU-only mode
-   export OLLAMA_GPU_LAYERS=0
-   ollama run deepseek-coder:r1 "Hello"
+   # Fix permissions if needed
+   chmod +x venv/bin/activate
+   chmod -R 755 .
    ```
 
-### Performance Optimization
-1. For slow systems:
-   - Use the quantized model (`deepseek-coder:r1-q4_K_M`)
-   - Reduce batch size in configuration
-   - Enable CPU-only mode
+### Quick Verification Steps
 
-2. For high-load systems:
-   - Enable GPU acceleration
-   - Increase batch size
-   - Use model caching 
+1. Backend Health Check:
+   ```bash
+   curl http://localhost:5000/api/health
+   ```
+
+2. Frontend Build Check:
+   ```bash
+   npm run build
+   ```
+
+3. OLLAMA Model Check:
+   ```bash
+   curl http://localhost:11434/api/tags
+   ```
+
+### Still Having Issues?
+
+1. Check the logs:
+   - Backend: Flask server output
+   - Frontend: Browser console (F12)
+   - OLLAMA: System logs
+
+2. Common Root Causes:
+   - Missing dependencies
+   - Incorrect file permissions
+   - Port conflicts
+   - Network/firewall restrictions
+   - Incompatible package versions
+
+3. If problems persist:
+   - Open an issue on GitHub
+   - Include error messages and logs
+   - Describe your environment setup
+   - List steps to reproduce the issue 
